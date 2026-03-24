@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SynapseX Music Studio</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+
+    <!-- ===== HEADER ===== -->
+    <header class="site-header">
+      <div class="header-brand">
+        <span class="brand-icon">🎹</span>
+        <div class="brand-text">
+          <h1>SynapseX</h1>
+          <p>Music Studio</p>
+        </div>
+      </div>
+
+      <div class="transport-controls">
+        <button id="btn-record" class="transport-btn btn-record" title="Start Recording">
+          <span class="btn-icon">⏺</span>
+          <span class="btn-label">REC</span>
+        </button>
+        <button id="btn-stop" class="transport-btn btn-stop" title="Stop" disabled>
+          <span class="btn-icon">⏹</span>
+          <span class="btn-label">STOP</span>
+        </button>
+        <button id="btn-play" class="transport-btn btn-play" title="Play Recording" disabled>
+          <span class="btn-icon">▶</span>
+          <span class="btn-label">PLAY</span>
+        </button>
+        <button id="btn-clear" class="transport-btn btn-clear" title="Clear Recording">
+          <span class="btn-icon">🗑</span>
+          <span class="btn-label">CLEAR</span>
+        </button>
+        <div class="rec-indicator" id="rec-indicator" title="Recording active">
+          <span class="rec-dot"></span>
+          <span>REC</span>
+        </div>
+      </div>
+
+      <div class="header-meta">
+        <div class="status-display" id="status-display">Ready — Press any key to play</div>
+        <div class="note-display" id="note-display">♪</div>
+      </div>
+    </header>
+
+    <!-- ===== MAIN ===== -->
+    <main class="main-layout">
+
+      <!-- LEFT SIDEBAR -->
+      <aside class="panel panel-left">
+        <section class="panel-section">
+          <h2 class="section-title">Instrument</h2>
+          <div class="instrument-grid" id="instrument-grid">
+            <button class="instrument-btn active" data-instrument="piano">
+              <span class="inst-icon">🎹</span>
+              <span class="inst-name">Piano</span>
+            </button>
+            <button class="instrument-btn" data-instrument="guitar">
+              <span class="inst-icon">🎸</span>
+              <span class="inst-name">Guitar</span>
+            </button>
+            <button class="instrument-btn" data-instrument="harmonium">
+              <span class="inst-icon">🪗</span>
+              <span class="inst-name">Harmonium</span>
+            </button>
+            <button class="instrument-btn" data-instrument="organ">
+              <span class="inst-icon">🎺</span>
+              <span class="inst-name">Organ</span>
+            </button>
+            <button class="instrument-btn" data-instrument="flute">
+              <span class="inst-icon">🎵</span>
+              <span class="inst-name">Flute</span>
+            </button>
+            <button class="instrument-btn" data-instrument="synth">
+              <span class="inst-icon">🔊</span>
+              <span class="inst-name">Synth</span>
+            </button>
+          </div>
+        </section>
+
+        <section class="panel-section">
+          <h2 class="section-title">Controls</h2>
+          <div class="control-group">
+            <label class="control-label" for="volume-slider">
+              Volume <span class="control-value" id="volume-value">80%</span>
+            </label>
+            <input type="range" id="volume-slider" class="slider" min="0" max="100" value="80" />
+          </div>
+          <div class="control-group">
+            <label class="control-label" for="reverb-slider">
+              Reverb <span class="control-value" id="reverb-value">20%</span>
+            </label>
+            <input type="range" id="reverb-slider" class="slider" min="0" max="100" value="20" />
+          </div>
+          <div class="control-group">
+            <label class="control-label" for="tempo-slider">
+              Tempo <span class="control-value" id="tempo-value">120 BPM</span>
+            </label>
+            <input type="range" id="tempo-slider" class="slider" min="40" max="240" value="120" />
+          </div>
+        </section>
+
+        <section class="panel-section">
+          <h2 class="section-title">Octave</h2>
+          <div class="octave-controls">
+            <button id="octave-down" class="octave-btn" title="Octave Down">▼ Oct</button>
+            <span class="octave-display" id="octave-display">4</span>
+            <button id="octave-up" class="octave-btn" title="Octave Up">Oct ▲</button>
+          </div>
+          <div class="control-group" style="margin-top:12px">
+            <label class="control-label">
+              <input type="checkbox" id="sustain-toggle" class="toggle-check" />
+              Sustain Pedal
+            </label>
+          </div>
+        </section>
+
+        <!-- Visualizer -->
+        <section class="panel-section visualizer-section">
+          <h2 class="section-title">Visualizer</h2>
+          <canvas id="visualizer" class="visualizer-canvas" width="200" height="80"></canvas>
+        </section>
+      </aside>
+
+      <!-- CENTER: PIANO + DISPLAY -->
+      <section class="center-area">
+
+        <!-- Spectrum display -->
+        <div class="spectrum-display">
+          <canvas id="spectrum" width="800" height="60"></canvas>
+        </div>
+
+        <!-- Piano container -->
+        <div class="piano-wrapper">
+          <div class="piano-container" id="piano" role="group" aria-label="Piano keyboard"></div>
+        </div>
+
+        <!-- Keyboard shortcut legend -->
+        <div class="keyboard-legend">
+          <div class="legend-row">
+            <span class="legend-label">Row 1 (Black keys, Octave 4):</span>
+            <span class="legend-keys">W E &nbsp; T Y U &nbsp; O P</span>
+          </div>
+          <div class="legend-row">
+            <span class="legend-label">Row 2 (White keys, Octave 4):</span>
+            <span class="legend-keys">A S D F G H J</span>
+          </div>
+          <div class="legend-row">
+            <span class="legend-label">Row 3 (White keys, Octave 3):</span>
+            <span class="legend-keys">Z X C V B N M</span>
+          </div>
+          <div class="legend-row">
+            <span class="legend-label">Row 4 (White keys, Octave 5):</span>
+            <span class="legend-keys">Q I O P &nbsp; K L ;</span>
+          </div>
+        </div>
+
+        <!-- Song Sheet -->
+        <div class="song-sheet-area">
+          <h2 class="section-title">🎵 Song Sheets</h2>
+          <div class="song-tabs" id="song-tabs">
+            <button class="song-tab active" data-song="dharkan">Tum Dil Ke Dharkan Me</button>
+            <button class="song-tab" data-song="twinkle">Twinkle Twinkle</button>
+            <button class="song-tab" data-song="happy">Happy Birthday</button>
+          </div>
+          <div class="song-display" id="song-display"></div>
+          <button class="demo-btn" id="btn-demo">▶ Play Demo</button>
+        </div>
+
+      </section>
+
+      <!-- RIGHT SIDEBAR -->
+      <aside class="panel panel-right">
+        <section class="panel-section">
+          <h2 class="section-title">Recorded Notes</h2>
+          <div class="recording-list" id="recording-list">
+            <p class="empty-msg">No notes recorded yet.<br/>Press REC and play!</p>
+          </div>
+        </section>
+
+        <section class="panel-section">
+          <h2 class="section-title">Tips & Shortcuts</h2>
+          <ul class="tips-list">
+            <li><kbd>A</kbd>–<kbd>J</kbd> → Octave 4 white keys</li>
+            <li><kbd>W</kbd><kbd>E</kbd><kbd>T</kbd><kbd>Y</kbd><kbd>U</kbd> → Black keys oct. 4</li>
+            <li><kbd>Z</kbd>–<kbd>M</kbd> → Octave 3 white keys</li>
+            <li><kbd>Space</kbd> → Sustain toggle</li>
+            <li><kbd>↑</kbd><kbd>↓</kbd> → Octave up / down</li>
+            <li><kbd>F1</kbd> → Start recording</li>
+            <li><kbd>F2</kbd> → Stop</li>
+            <li><kbd>F3</kbd> → Playback</li>
+          </ul>
+        </section>
+
+        <section class="panel-section">
+          <h2 class="section-title">Current Session</h2>
+          <div class="session-stats" id="session-stats">
+            <div class="stat-item">
+              <span class="stat-label">Notes Played</span>
+              <span class="stat-value" id="stat-notes">0</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">Recording</span>
+              <span class="stat-value" id="stat-duration">0.0s</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">Instrument</span>
+              <span class="stat-value" id="stat-instrument">Piano</span>
+            </div>
+          </div>
+        </section>
+      </aside>
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="site-footer">
+      <p>SynapseX Music Studio &copy; 2025 — Built with Web Audio API &amp; Pure JavaScript</p>
+      <p class="footer-sub">Press keys on your keyboard to play • Use sliders to shape your sound</p>
+    </footer>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
