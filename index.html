@@ -158,6 +158,18 @@
             <span class="legend-label">Row 4 (White keys, Octave 5):</span>
             <span class="legend-keys">Q I O P &nbsp; K L ;</span>
           </div>
+          <div class="legend-row legend-row-drums">
+            <span class="legend-label">Drum Pads (Number keys):</span>
+            <span class="legend-keys legend-keys-drums">1 2 3 4 5 6 7 8 9 0</span>
+          </div>
+        </div>
+
+        <!-- Drum Pads -->
+        <div class="drum-section">
+          <h2 class="section-title">🥁 Drum Pads <span class="drum-hint">— Press number keys 1–0</span></h2>
+          <div class="drum-pads-grid" id="drum-pads-grid">
+            <!-- Populated by JS -->
+          </div>
         </div>
 
         <!-- Song Sheet -->
@@ -170,6 +182,32 @@
           </div>
           <div class="song-display" id="song-display"></div>
           <button class="demo-btn" id="btn-demo">▶ Play Demo</button>
+        </div>
+
+        <!-- Music Upload & Tune Detection -->
+        <div class="upload-section">
+          <h2 class="section-title">🎵 Upload Music &amp; Detect Tune</h2>
+          <div class="upload-zone" id="upload-zone">
+            <input type="file" id="music-upload" class="upload-file-input" accept="audio/*" />
+            <span class="upload-icon">🎵</span>
+            <p class="upload-text">Drop audio file here or click to browse</p>
+            <p class="upload-subtext">Supports MP3, WAV, OGG, M4A · AI-powered melody detection</p>
+          </div>
+          <div class="analysis-progress" id="analysis-progress">
+            <p class="progress-label" id="progress-label">Analyzing audio…</p>
+            <div class="progress-bar-track">
+              <div class="progress-bar-fill" id="progress-bar-fill"></div>
+            </div>
+          </div>
+          <div class="detected-tune" id="detected-tune">
+            <p class="detected-tune-title">🎹 Detected Melody</p>
+            <div class="detected-notes-row" id="detected-notes-row"></div>
+            <div class="detected-tune-actions">
+              <button class="tune-action-btn primary" id="play-detected-btn">▶ Play Detected Tune</button>
+              <button class="tune-action-btn secondary" id="save-detected-btn">💾 Save as Song Sheet</button>
+            </div>
+            <p class="detected-filename" id="detected-filename"></p>
+          </div>
         </div>
 
       </section>
@@ -189,6 +227,7 @@
             <li><kbd>A</kbd>–<kbd>J</kbd> → Octave 4 white keys</li>
             <li><kbd>W</kbd><kbd>E</kbd><kbd>T</kbd><kbd>Y</kbd><kbd>U</kbd> → Black keys oct. 4</li>
             <li><kbd>Z</kbd>–<kbd>M</kbd> → Octave 3 white keys</li>
+            <li><kbd>1</kbd>–<kbd>9</kbd><kbd>0</kbd> → Drum pads</li>
             <li><kbd>Space</kbd> → Sustain toggle</li>
             <li><kbd>↑</kbd><kbd>↓</kbd> → Octave up / down</li>
             <li><kbd>F1</kbd> → Start recording</li>

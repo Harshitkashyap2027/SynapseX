@@ -130,6 +130,24 @@ const INSTRUMENTS = {
   },
 };
 
+/* ================================================================
+   DRUM MAP — Number keys 1–0
+   ================================================================ */
+
+/** Maps number keys 0-9 → drum preset */
+const DRUM_MAP = {
+  '1': { name: 'Kick',    emoji: '🥁', color: '#ff3b3b', colorRgb: '255,59,59'   },
+  '2': { name: 'Snare',   emoji: '🪘', color: '#ff9900', colorRgb: '255,153,0'   },
+  '3': { name: 'Hi-Hat',  emoji: '🎩', color: '#ffcc00', colorRgb: '255,204,0'   },
+  '4': { name: 'Open HH', emoji: '🎪', color: '#00ff88', colorRgb: '0,255,136'   },
+  '5': { name: 'Clap',    emoji: '👏', color: '#00d4ff', colorRgb: '0,212,255'   },
+  '6': { name: 'Tom Lo',  emoji: '🎯', color: '#ff2fff', colorRgb: '255,47,255'  },
+  '7': { name: 'Tom Mid', emoji: '🎲', color: '#7b2fff', colorRgb: '123,47,255'  },
+  '8': { name: 'Tom Hi',  emoji: '🎮', color: '#00b4ff', colorRgb: '0,180,255'   },
+  '9': { name: 'Crash',   emoji: '💥', color: '#ffb800', colorRgb: '255,184,0'   },
+  '0': { name: 'Rim',     emoji: '⭕', color: '#e8e8ff', colorRgb: '232,232,255' },
+};
+
 /** Song sheets */
 const SONGS = {
   dharkan: {
@@ -369,7 +387,158 @@ const AudioEngine = (() => {
   function getAnalyser() { return analyser; }
   function getContext()  { return ctx; }
 
-  return { init, noteOn, noteOff, allNotesOff, setVolume, setReverb, getAnalyser, getContext, noteFrequency };
+  /* ── Drum synthesis helpers ── */
+
+  function _noiseBuffer(duration) {
+    const len = Math.round(ctx.sampleRate * duration);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+    return buf;
+  }
+
+  function _drumKick(vol) {
+    const now = ctx.currentTime;
+    const osc  = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(65, now);
+    osc.frequency.exponentialRampToValueAtTime(0.001, now + 0.5);
+    gain.gain.setValueAtTime(vol * 2.2, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+    osc.connect(gain); gain.connect(masterGain);
+    osc.start(now); osc.stop(now + 0.5);
+
+    // Transient click
+    const src  = ctx.createBufferSource();
+    src.buffer = _noiseBuffer(0.02);
+    const cg   = ctx.createGain();
+    cg.gain.setValueAtTime(vol * 0.7, now);
+    cg.gain.exponentialRampToValueAtTime(0.001, now + 0.02);
+    src.connect(cg); cg.connect(masterGain);
+    src.start(now);
+  }
+
+  function _drumSnare(vol) {
+    const now = ctx.currentTime;
+
+    // Noise
+    const nSrc = ctx.createBufferSource();
+    nSrc.buffer = _noiseBuffer(0.25);
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'highpass'; filter.frequency.value = 2000;
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(vol, now);
+    ng.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+    nSrc.connect(filter); filter.connect(ng); ng.connect(masterGain);
+    nSrc.start(now);
+
+    // Body tone
+    const osc  = ctx.createOscillator();
+    const og   = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(200, now);
+    osc.frequency.exponentialRampToValueAtTime(90, now + 0.1);
+    og.gain.setValueAtTime(vol * 0.8, now);
+    og.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+    osc.connect(og); og.connect(masterGain);
+    osc.start(now); osc.stop(now + 0.12);
+  }
+
+  function _drumHiHat(vol, duration) {
+    const now  = ctx.currentTime;
+    const src  = ctx.createBufferSource();
+    src.buffer = _noiseBuffer(duration);
+    const f1   = ctx.createBiquadFilter();
+    f1.type = 'highpass'; f1.frequency.value = 7000;
+    const f2   = ctx.createBiquadFilter();
+    f2.type = 'peaking'; f2.frequency.value = 10000; f2.gain.value = 6;
+    const ng   = ctx.createGain();
+    ng.gain.setValueAtTime(vol * 0.5, now);
+    ng.gain.exponentialRampToValueAtTime(0.001, now + duration);
+    src.connect(f1); f1.connect(f2); f2.connect(ng); ng.connect(masterGain);
+    src.start(now);
+  }
+
+  function _drumClap(vol) {
+    const now = ctx.currentTime;
+    [0, 0.01, 0.022].forEach(offset => {
+      const src  = ctx.createBufferSource();
+      src.buffer = _noiseBuffer(0.15);
+      const f    = ctx.createBiquadFilter();
+      f.type = 'bandpass'; f.frequency.value = 1200; f.Q.value = 0.8;
+      const g    = ctx.createGain();
+      g.gain.setValueAtTime(vol * 0.8, now + offset);
+      g.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.15);
+      src.connect(f); f.connect(g); g.connect(masterGain);
+      src.start(now + offset);
+    });
+  }
+
+  function _drumTom(vol, startFreq) {
+    const now  = ctx.currentTime;
+    const osc  = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(startFreq, now);
+    osc.frequency.exponentialRampToValueAtTime(startFreq * 0.3, now + 0.35);
+    gain.gain.setValueAtTime(vol * 1.6, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+    osc.connect(gain); gain.connect(masterGain);
+    osc.start(now); osc.stop(now + 0.4);
+  }
+
+  function _drumCrash(vol) {
+    const now  = ctx.currentTime;
+    const src  = ctx.createBufferSource();
+    src.buffer = _noiseBuffer(2.0);
+    const f    = ctx.createBiquadFilter();
+    f.type = 'highpass'; f.frequency.value = 5000;
+    const g    = ctx.createGain();
+    g.gain.setValueAtTime(vol, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 2.0);
+    src.connect(f); f.connect(g); g.connect(masterGain);
+    src.start(now);
+  }
+
+  function _drumRim(vol) {
+    const now  = ctx.currentTime;
+    const osc  = ctx.createOscillator();
+    const og   = ctx.createGain();
+    osc.type = 'triangle'; osc.frequency.value = 400;
+    og.gain.setValueAtTime(vol, now);
+    og.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+    osc.connect(og); og.connect(masterGain);
+    osc.start(now); osc.stop(now + 0.06);
+
+    const src  = ctx.createBufferSource();
+    src.buffer = _noiseBuffer(0.04);
+    const ng   = ctx.createGain();
+    ng.gain.setValueAtTime(vol * 0.5, now);
+    ng.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+    src.connect(ng); ng.connect(masterGain);
+    src.start(now);
+  }
+
+  /** Play a synthesized drum sound by type key ('1'–'9', '0') */
+  function playDrum(type, volume = 0.8) {
+    init();
+    if (ctx.state === 'suspended') ctx.resume();
+    switch (type) {
+      case '1': _drumKick(volume);          break;
+      case '2': _drumSnare(volume);         break;
+      case '3': _drumHiHat(volume, 0.05);   break;
+      case '4': _drumHiHat(volume, 0.35);   break;
+      case '5': _drumClap(volume);          break;
+      case '6': _drumTom(volume, 80);       break;
+      case '7': _drumTom(volume, 120);      break;
+      case '8': _drumTom(volume, 200);      break;
+      case '9': _drumCrash(volume);         break;
+      case '0': _drumRim(volume);           break;
+    }
+  }
+
+  return { init, noteOn, noteOff, allNotesOff, setVolume, setReverb, getAnalyser, getContext, noteFrequency, playDrum };
 })();
 
 /* ================================================================
@@ -544,6 +713,20 @@ document.addEventListener('keydown', (e) => {
 
   if (State.pressedKeys.has(key)) return;
 
+  // ── Numeric keys → drum pads ──
+  if (/^[0-9]$/.test(e.key)) {
+    State.pressedKeys.add(e.key);
+    AudioEngine.playDrum(e.key, State.volume);
+    flashDrumPad(e.key);
+    const drumInfo = DRUM_MAP[e.key];
+    if (drumInfo) {
+      document.getElementById('note-display').textContent = drumInfo.emoji;
+      document.getElementById('status-display').textContent =
+        `🥁 ${drumInfo.name} — Drum Pad [${e.key}]`;
+    }
+    return;
+  }
+
   const mapping = KEY_MAP[key];
   if (!mapping) return;
 
@@ -557,6 +740,13 @@ document.addEventListener('keydown', (e) => {
 
 document.addEventListener('keyup', (e) => {
   const key = e.key.toLowerCase();
+
+  // Release numeric key
+  if (/^[0-9]$/.test(e.key)) {
+    State.pressedKeys.delete(e.key);
+    return;
+  }
+
   State.pressedKeys.delete(key);
 
   const mapping = KEY_MAP[key];
@@ -973,11 +1163,429 @@ function startVisualizers() {
 }
 
 /* ================================================================
-   INIT
+   DRUM PADS UI
    ================================================================ */
+
+/** Render drum pad grid from DRUM_MAP */
+function renderDrumPads() {
+  const grid = document.getElementById('drum-pads-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+
+  // Order: 1 2 3 4 5 / 6 7 8 9 0
+  const order = ['1','2','3','4','5','6','7','8','9','0'];
+  order.forEach(num => {
+    const info = DRUM_MAP[num];
+    const pad  = document.createElement('button');
+    pad.className   = 'drum-pad';
+    pad.id          = `drum-pad-${num}`;
+    pad.title       = `${info.name} [${num}]`;
+    pad.style.setProperty('--pad-color',     info.color);
+    pad.style.setProperty('--pad-color-rgb', info.colorRgb);
+    pad.innerHTML = `
+      <span class="pad-num">${num}</span>
+      <span class="pad-emoji">${info.emoji}</span>
+      <span class="pad-name">${info.name}</span>
+    `;
+    pad.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      AudioEngine.playDrum(num, State.volume);
+      flashDrumPad(num);
+      document.getElementById('note-display').textContent = info.emoji;
+      document.getElementById('status-display').textContent =
+        `🥁 ${info.name} — Drum Pad [${num}]`;
+    });
+    pad.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      AudioEngine.playDrum(num, State.volume);
+      flashDrumPad(num);
+    }, { passive: false });
+    grid.appendChild(pad);
+  });
+}
+
+/** Flash a drum pad element (visual hit feedback) */
+function flashDrumPad(num) {
+  const pad = document.getElementById(`drum-pad-${num}`);
+  if (!pad) return;
+  pad.classList.add('hitting');
+
+  // Ripple effect
+  const ripple = document.createElement('span');
+  ripple.className = 'pad-ripple';
+  ripple.style.setProperty('--pad-color', DRUM_MAP[num]?.color || '#fff');
+  pad.appendChild(ripple);
+  setTimeout(() => { ripple.remove(); }, 420);
+
+  setTimeout(() => pad.classList.remove('hitting'), 150);
+}
+
+/* ================================================================
+   MUSIC ANALYZER — FFT-based pitch detection
+   ================================================================ */
+
+const MusicAnalyzer = (() => {
+  let isAnalyzing  = false;
+  let detectedSeq  = [];
+  let playTimers   = [];
+
+  /* ── Minimal in-place Cooley-Tukey FFT ── */
+  function _fft(re, im) {
+    const n = re.length;
+    // Bit-reversal permutation
+    let j = 0;
+    for (let i = 1; i < n; i++) {
+      let bit = n >> 1;
+      for (; j & bit; bit >>= 1) j ^= bit;
+      j ^= bit;
+      if (i < j) {
+        let t = re[i]; re[i] = re[j]; re[j] = t;
+        t = im[i]; im[i] = im[j]; im[j] = t;
+      }
+    }
+    // Butterfly stages
+    for (let len = 2; len <= n; len <<= 1) {
+      const ang = -2 * Math.PI / len;
+      const wr  = Math.cos(ang);
+      const wi  = Math.sin(ang);
+      for (let i = 0; i < n; i += len) {
+        let uRe = 1, uIm = 0;
+        for (let k = 0; k < (len >> 1); k++) {
+          const idx  = i + k + (len >> 1);
+          const tRe  = uRe * re[idx] - uIm * im[idx];
+          const tIm  = uRe * im[idx] + uIm * re[idx];
+          const eRe  = re[i + k], eIm = im[i + k];
+          re[i + k]  = eRe + tRe;  im[i + k]  = eIm + tIm;
+          re[idx]    = eRe - tRe;  im[idx]    = eIm - tIm;
+          const nwRe = uRe * wr - uIm * wi;
+          uIm        = uRe * wi + uIm * wr;
+          uRe        = nwRe;
+        }
+      }
+    }
+  }
+
+  /** Convert frequency (Hz) to nearest note {name, octave} or null */
+  function _freqToNote(freq) {
+    if (freq < 27.5 || freq > 4186) return null;
+    const midi     = Math.round(12 * Math.log2(freq / 440) + 69);
+    const octave   = Math.floor(midi / 12) - 1;
+    const noteIdx  = ((midi % 12) + 12) % 12;
+    if (octave < 2 || octave > 7) return null;
+    return { name: NOTES[noteIdx], octave };
+  }
+
+  /** Find keyboard char for a given note/octave (or '?' if unmapped) */
+  function _noteToKey(noteName, octave) {
+    for (const [ch, [n, o]] of Object.entries(KEY_MAP)) {
+      if (n === noteName && o === octave) return ch.toUpperCase();
+    }
+    return null;
+  }
+
+  /** Core analysis: returns array of {name, octave, duration} */
+  async function _extractNotes(channelData, sampleRate, onProgress) {
+    const FFT_SIZE          = 4096;
+    const HOP               = Math.round(sampleRate * 0.1);  // 100 ms hop
+    const MIN_MELODY_FREQ   = 50;    // Hz – lowest note to detect
+    const MAX_MELODY_FREQ   = 2000;  // Hz – highest note to detect
+    const MIN_RMS_THRESHOLD = 0.006; // silence gate – skip windows below this energy
+    const MIN_NOTE_DURATION = 120;   // ms – discard notes shorter than this (likely noise)
+    const totalWin  = Math.floor((channelData.length - FFT_SIZE) / HOP);
+
+    const re = new Float32Array(FFT_SIZE);
+    const im = new Float32Array(FFT_SIZE);
+
+    const minBin = Math.ceil(MIN_MELODY_FREQ  * FFT_SIZE / sampleRate);
+    const maxBin = Math.floor(MAX_MELODY_FREQ * FFT_SIZE / sampleRate);
+
+    const notes    = [];
+    let lastKey    = null;
+    let lastNote   = null;
+
+    for (let w = 0; w < totalWin; w++) {
+      const start = w * HOP;
+
+      // RMS energy gate — skip silent frames
+      let rms = 0;
+      for (let i = 0; i < FFT_SIZE; i++) rms += channelData[start + i] ** 2;
+      rms = Math.sqrt(rms / FFT_SIZE);
+
+      if (rms < MIN_RMS_THRESHOLD) {
+        if (lastNote) { notes.push(lastNote); lastNote = null; lastKey = null; }
+        if (w % 20 === 0) {
+          onProgress((w / totalWin) * 100);
+          await new Promise(r => setTimeout(r, 0));
+        }
+        continue;
+      }
+
+      // Fill FFT buffers with Hanning window
+      for (let i = 0; i < FFT_SIZE; i++) {
+        const win = 0.5 * (1 - Math.cos(2 * Math.PI * i / (FFT_SIZE - 1)));
+        re[i] = channelData[start + i] * win;
+        im[i] = 0;
+      }
+
+      _fft(re, im);
+
+      // Find peak magnitude bin in musical range
+      let peakMag = 0, peakBin = minBin;
+      for (let b = minBin; b <= maxBin && b < FFT_SIZE / 2; b++) {
+        const mag = re[b] * re[b] + im[b] * im[b];
+        if (mag > peakMag) { peakMag = mag; peakBin = b; }
+      }
+
+      const freq     = peakBin * sampleRate / FFT_SIZE;
+      const noteInfo = _freqToNote(freq);
+
+      if (noteInfo) {
+        const nKey = `${noteInfo.name}${noteInfo.octave}`;
+        if (nKey !== lastKey) {
+          if (lastNote) notes.push(lastNote);
+          lastNote = { name: noteInfo.name, octave: noteInfo.octave, duration: 100 };
+          lastKey  = nKey;
+        } else if (lastNote) {
+          lastNote.duration += 100;
+        }
+      } else {
+        if (lastNote) { notes.push(lastNote); lastNote = null; lastKey = null; }
+      }
+
+      if (w % 10 === 0) {
+        onProgress((w / totalWin) * 100);
+        await new Promise(r => setTimeout(r, 0));
+      }
+    }
+    if (lastNote) notes.push(lastNote);
+
+    // Remove notes shorter than minimum duration — likely noise
+    return notes.filter(n => n.duration >= MIN_NOTE_DURATION);
+  }
+
+  /** Public: analyse a File object and update the UI */
+  async function analyzeFile(file) {
+    if (isAnalyzing) return;
+    isAnalyzing = true;
+    detectedSeq = [];
+
+    const progressEl   = document.getElementById('analysis-progress');
+    const fillEl       = document.getElementById('progress-bar-fill');
+    const labelEl      = document.getElementById('progress-label');
+    const tuneEl       = document.getElementById('detected-tune');
+    const notesRowEl   = document.getElementById('detected-notes-row');
+    const fileNameEl   = document.getElementById('detected-filename');
+    const playBtn      = document.getElementById('play-detected-btn');
+    const saveBtn      = document.getElementById('save-detected-btn');
+
+    progressEl.style.display = 'block';
+    tuneEl.style.display     = 'none';
+    fillEl.style.width       = '0%';
+    labelEl.textContent      = `Analysing "${file.name}"…`;
+    document.getElementById('status-display').textContent = `Analysing: ${file.name}`;
+
+    try {
+      const arrayBuf  = await file.arrayBuffer();
+      const tmpCtx    = new (window.AudioContext || window.webkitAudioContext)();
+      const audioBuf  = await tmpCtx.decodeAudioData(arrayBuf);
+      await tmpCtx.close();
+
+      const notes = await _extractNotes(
+        audioBuf.getChannelData(0),
+        audioBuf.sampleRate,
+        pct => { fillEl.style.width = `${pct.toFixed(0)}%`; }
+      );
+
+      detectedSeq = notes;
+
+      progressEl.style.display = 'none';
+      notesRowEl.innerHTML     = '';
+
+      if (notes.length === 0) {
+        notesRowEl.innerHTML =
+          '<p style="color:var(--clr-text-muted);font-size:0.78rem;padding:4px 0;">' +
+          'No clear melody detected. Try a simpler melody or a solo-instrument recording.</p>';
+      } else {
+        notes.forEach(note => {
+          const keyChar = _noteToKey(note.name, note.octave);
+          const badge   = document.createElement('div');
+          badge.className = 'detected-note-badge';
+          badge.title     = `${note.name}${note.octave} — click to preview`;
+          badge.innerHTML = `
+            <span class="detected-note-key">${keyChar || '?'}</span>
+            <span class="detected-note-name">${note.name}${note.octave}</span>
+          `;
+          badge.addEventListener('click', () => {
+            AudioEngine.noteOn(note.name, note.octave, State.currentInstrument, State.volume);
+            setTimeout(() => AudioEngine.noteOff(`${note.name}${note.octave}`, false), 300);
+          });
+          notesRowEl.appendChild(badge);
+        });
+      }
+
+      fileNameEl.textContent = `Source: ${file.name} · ${notes.length} note(s) detected`;
+      tuneEl.style.display   = 'block';
+      playBtn.disabled       = notes.length === 0;
+      saveBtn.disabled       = notes.length === 0;
+
+      document.getElementById('status-display').textContent =
+        `✓ Detected ${notes.length} note(s) from "${file.name}"`;
+
+    } catch (err) {
+      progressEl.style.display = 'none';
+      document.getElementById('status-display').textContent =
+        `⚠ Error: ${err.message}`;
+    } finally {
+      isAnalyzing = false;
+    }
+  }
+
+  /** Playback the detected sequence */
+  function playDetected() {
+    if (detectedSeq.length === 0) return;
+    playTimers.forEach(clearTimeout);
+    playTimers = [];
+    AudioEngine.allNotesOff();
+
+    const playBtn = document.getElementById('play-detected-btn');
+    playBtn.disabled    = true;
+    playBtn.textContent = '⏹ Stop';
+
+    document.getElementById('status-display').textContent = 'Playing detected tune…';
+
+    let cursor = 0;
+    detectedSeq.forEach(note => {
+      const t = setTimeout(() => {
+        AudioEngine.noteOn(note.name, note.octave, State.currentInstrument, State.volume);
+        const keyEl = document.getElementById(`key-${note.name}${note.octave}`);
+        if (keyEl) {
+          keyEl.classList.add('active', 'playing');
+          setTimeout(() => {
+            keyEl.classList.remove('active', 'playing');
+            AudioEngine.noteOff(`${note.name}${note.octave}`, false);
+          }, note.duration * 0.8);
+        }
+        updateNoteDisplay(note.name, note.octave);
+      }, cursor);
+      playTimers.push(t);
+      cursor += note.duration;
+    });
+
+    const endT = setTimeout(() => {
+      playBtn.disabled    = false;
+      playBtn.textContent = '▶ Play Detected Tune';
+      document.getElementById('status-display').textContent =
+        'Detected tune playback finished';
+    }, cursor + 500);
+    playTimers.push(endT);
+  }
+
+  /** Save detected sequence as a new Song Sheet tab */
+  function saveAsSongSheet() {
+    if (detectedSeq.length === 0) return;
+    /** Maximum notes shown in the Song Sheet lyric view */
+    const MAX_DETECTED_NOTES_DISPLAY = 30;
+    const songKey = `detected_${Date.now()}`;
+    const fileName = document.getElementById('detected-filename').textContent
+      .replace('Source:', '').split('·')[0].trim();
+
+    SONGS[songKey] = {
+      title: `🎵 ${fileName || 'Detected Song'}`,
+      hint:  'Detected from uploaded audio · Click ▶ Play Demo to hear it',
+      lines: [{
+        words: detectedSeq.slice(0, MAX_DETECTED_NOTES_DISPLAY).map(note => ({
+          syllable: `${note.name}${note.octave}`,
+          keys: [_noteToKey(note.name, note.octave) || '?'],
+        })),
+      }],
+      sequence: detectedSeq.map(note => [note.name, note.octave, note.duration]),
+    };
+
+    const tabsEl  = document.getElementById('song-tabs');
+    const newTab  = document.createElement('button');
+    newTab.className    = 'song-tab';
+    newTab.dataset.song = songKey;
+    newTab.textContent  = `🎵 ${fileName.split('.')[0] || 'Detected'}`;
+    tabsEl.appendChild(newTab);
+
+    document.querySelectorAll('.song-tab').forEach(t => t.classList.remove('active'));
+    newTab.classList.add('active');
+    renderSongSheetClean(songKey);
+
+    document.getElementById('status-display').textContent =
+      '✓ Detected tune saved as Song Sheet!';
+  }
+
+  /** Stop any in-progress detected-tune playback */
+  function stopPlayback() {
+    playTimers.forEach(clearTimeout);
+    playTimers = [];
+    AudioEngine.allNotesOff();
+    const playBtn = document.getElementById('play-detected-btn');
+    if (playBtn) {
+      playBtn.textContent = '▶ Play Detected Tune';
+      playBtn.disabled    = detectedSeq.length === 0;
+    }
+  }
+
+  return { analyzeFile, playDetected, stopPlayback, saveAsSongSheet };
+})();
+
+/* ================================================================
+   MUSIC UPLOAD EVENT HANDLERS
+   ================================================================ */
+
+(function setupUpload() {
+  const zone   = document.getElementById('upload-zone');
+  const input  = document.getElementById('music-upload');
+  const playBtn = document.getElementById('play-detected-btn');
+  const saveBtn = document.getElementById('save-detected-btn');
+
+  // Click on zone triggers file picker
+  zone.addEventListener('click', (e) => {
+    if (e.target !== input) input.click();
+  });
+
+  input.addEventListener('change', () => {
+    if (input.files && input.files[0]) {
+      MusicAnalyzer.analyzeFile(input.files[0]);
+      input.value = ''; // reset so same file can be re-selected
+    }
+  });
+
+  // Drag-and-drop
+  zone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    zone.classList.add('dragging');
+  });
+  zone.addEventListener('dragleave', () => zone.classList.remove('dragging'));
+  zone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    zone.classList.remove('dragging');
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith('audio/')) {
+      MusicAnalyzer.analyzeFile(file);
+    }
+  });
+
+  // Play / save buttons
+  if (playBtn) {
+    playBtn.addEventListener('click', () => {
+      if (playBtn.textContent.includes('Stop')) {
+        MusicAnalyzer.stopPlayback();
+      } else {
+        MusicAnalyzer.playDetected();
+      }
+    });
+  }
+  if (saveBtn) saveBtn.addEventListener('click', () => MusicAnalyzer.saveAsSongSheet());
+})();
+
+
 
 function init() {
   renderPiano();
+  renderDrumPads();
   renderSongSheetClean('dharkan');
   startVisualizers();
 
